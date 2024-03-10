@@ -1,3 +1,4 @@
+#include "util.h"
 #include <cstdio>
 #include <cstring>
 #include <netinet/in.h>
@@ -8,10 +9,7 @@
 int main()
 {
     int sockfd = socket(AF_INET, SOCK_STREAM, 0);
-    if (sockfd < 0) {
-        perror("create socket failed: ");
-        return -1;
-    }
+    errif(sockfd < 0, "socket create failed: ");
 
     /* 初始化服务端地址及端口 */
     struct sockaddr_in server_addr;
@@ -22,16 +20,10 @@ int main()
 
     /* bind */
     int ret = bind(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr));
-    if (ret < 0) {
-        perror("bind failed: ");
-        return -1;
-    }
+    errif(ret < 0, "socket bind failed: ");
 
     /* listen */
-    if (listen(sockfd, SOMAXCONN) < 0) {
-        perror("listen failed: ");
-        return -1;
-    }
+    errif(listen(sockfd, SOMAXCONN) < 0, "listen failed: ");
 
     /* use to store client addr */
     struct sockaddr_in client_addr;
@@ -40,17 +32,28 @@ int main()
 
     /* accept */
     int conn_fd = accept(sockfd, (struct sockaddr *)&client_addr, &client_addr_len);
-    if (conn_fd < 0) {
-        perror("accept failed: ");
-        return -1;
-    }
+    errif(conn_fd < 0, "accept failed: ");
 
     char client_ip_str[INET_ADDRSTRLEN];
     const char *client_ip = inet_ntop(AF_INET, &client_addr.sin_addr, client_ip_str, INET_ADDRSTRLEN);
     unsigned short client_port = ntohs(client_addr.sin_port);
     printf("A new connection is established: conn_fd: %d, ip: %s, port: %d\n", conn_fd, client_ip, client_port);
 
-    sleep(100);
+    while (true) {
+        char buf[1024] = {0};
+        ssize_t read_bytes = read(conn_fd, buf, sizeof(buf));
+        if (read_bytes > 0) {
+            printf("message from client fd %d: %s\n", conn_fd, buf);
+            write(conn_fd, buf, sizeof(buf));
+        } else if (read_bytes == 0) {
+            printf("client fd %d disconnected\n", conn_fd);
+            close(conn_fd);
+            break;
+        } else if (read_bytes == -1) {
+            close(conn_fd);
+            errif(true, "socket read error: ");
+        }
+    }
 
     close(sockfd);
 
